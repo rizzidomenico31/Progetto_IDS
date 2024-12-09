@@ -40,35 +40,36 @@
                         <div class="p-5">
                             <div class="text-center">
                                 <h1 class="h4 text-gray-900 mb-4">Crea un Account!</h1>
+                                <br> <h2 class="h4 text-danger mb-4">{{ error }} </h2>
                             </div>
-                            <form class="user">
+                            <form class="user" action="/verify" method="POST">
                                 <div class="form-group row">
                                     <div class="col-sm-6 mb-3 mb-sm-0">
                                         <input type="text" class="form-control form-control-user" id="exampleFirstName"
-                                            placeholder="Nome">
+                                            placeholder="Nome" name="nome">
                                     </div>
                                     <div class="col-sm-6">
                                         <input type="text" class="form-control form-control-user" id="exampleLastName"
-                                            placeholder="Cognome">
+                                            placeholder="Cognome" name="cognome">
                                     </div>
                                 </div>
                                 <div class="form-group">
-                                    <input type="email" class="form-control form-control-user" id="exampleInputEmail"
-                                        placeholder="Inserisci Email">
+                                    <input type="email" class="form-control form-control-user" id="email"
+                                        placeholder="Inserisci Email" name="email" required>
                                 </div>
                                 <div class="form-group row">
                                     <div class="col-sm-6 mb-3 mb-sm-0">
                                         <input type="password" class="form-control form-control-user"
-                                            id="exampleInputPassword" placeholder="Password">
+                                            id="password" placeholder="Password" name="password" required>
                                     </div>
                                     <div class="col-sm-6">
                                         <input type="password" class="form-control form-control-user"
-                                            id="exampleRepeatPassword" placeholder="Ripeti Password">
+                                            id="repeatPassword" placeholder="Ripeti Password" required> >
                                     </div>
                                 </div>
-                                <a href="login.html" class="btn btn-primary btn-user btn-block">
+                                <button type="submit" class="btn btn-primary btn-user btn-block">
                                     Registrati Ora
-                                </a>
+                                </button>
                                 <hr>
                                 <a href="index.html" class="btn btn-google btn-user btn-block">
                                     <i class="fab fa-google fa-fw"></i> Register with Google
@@ -101,7 +102,22 @@
 
     <!-- Custom scripts for all pages-->
     <script src="../static/js/sb-admin-2.min.js"></script>
+ <script>
+        document.getElementById('passwordForm').addEventListener('submit', function(event) {
+            // Prendi i valori delle password
+            var password = document.getElementById('password').value;
+            var repeatPassword = document.getElementById('repeatPassword').value;
+            var errorDiv = document.getElementById('passwordError');
 
+            // Verifica se le password coincidono
+            if (password !== repeatPassword) {
+                event.preventDefault(); // Blocca l'invio del modulo
+                errorDiv.textContent = "Le password non coincidono. Riprova!";
+            } else {
+                errorDiv.textContent = ""; // Pulisce il messaggio d'errore
+            }
+        });
+    </script>
 </body>
 
 </html>

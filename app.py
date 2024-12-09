@@ -1,51 +1,27 @@
 import email
 import os
+import random
 import secrets
+from crypt import methods
 from urllib.parse import urlencode
+from hashlib import md5
 
+import hashlib
 import requests
 from flask import Flask, render_template, redirect, url_for, current_app, abort, session, request, flash
 from flask.cli import load_dotenv
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager , UserMixin , login_user , logout_user , current_user , user_unauthorized
 from dotenv import load_dotenv
+from flask_mail import Mail, Message
+from config import app
+from funzioni_utili import send_otp
 
 load_dotenv()
 
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'top secret!'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://user1:progettoids@localhost/progettoids'
-app.config['OAUTH2_PROVIDERS'] = {
-    # Google OAuth 2.0 documentation:
-    # https://developers.google.com/identity/protocols/oauth2/web-server#httprest
-    'google': {
-        'client_id': os.environ.get('GOOGLE_CLIENT_ID'),
-        'client_secret': os.environ.get('GOOGLE_CLIENT_SECRET'),
-        'authorize_url': 'https://accounts.google.com/o/oauth2/auth',
-        'token_url': 'https://accounts.google.com/o/oauth2/token',
-        'userinfo': {
-            'url': 'https://www.googleapis.com/oauth2/v3/userinfo',
-            'email': lambda json: json['email'],
-        },
-        'scopes': ['https://www.googleapis.com/auth/userinfo.email'],
-    },
 
-    # GitHub OAuth 2.0 documentation:
-    # https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
-    'github': {
-        'client_id': os.environ.get('GITHUB_CLIENT_ID'),
-        'client_secret': os.environ.get('GITHUB_CLIENT_SECRET'),
-        'authorize_url': 'https://github.com/login/oauth/authorize',
-        'token_url': 'https://github.com/login/oauth/access_token',
-        'userinfo': {
-            'url': 'https://api.github.com/user/emails',
-            'email': lambda json: json[0]['email'],
-        },
-        'scopes': ['user:email'],
-    },
-}
-
+mail = Mail(app)
 db = SQLAlchemy(app)
 login = LoginManager(app)
 login.login_view='login'
@@ -60,10 +36,15 @@ class User(UserMixin , db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255) , nullable=False)
     email = db.Column(db.String(255) , nullable=True)
+    hash_password = db.Column(db.String(200) , nullable=True)
+    nome = db.Column(db.String(50) , nullable=True)
+    cognome = db.Column(db.String(50) , nullable=True)
+    verificato = db.Column(db.Boolean() , nullable=True)
+    otp = db.Column(db.Integer() , nullable=True)
 
 
 
-@app.route('/')
+@app.route('/'  ,methods=['GET','POST'])
 def index():
     if not current_user.is_anonymous:
         username = current_user.username
@@ -73,12 +54,73 @@ def index():
         return redirect(url_for('login'))
 
 @app.route('/login')
-def login():  # put application's code here
+def login():# put application's code here
     return render_template('login.html')
 
+@app.route('/trylogin' , methods=['GET','POST'])
+def trylogin():
+    email = request.form['email']
+    hash_password = hashlib.md5(request.form['password'].encode()).hexdigest()
+    user = db.session.scalar(db.Select(User).where(User.email == email , User.hash_password == hash_password ))
+    if user is not None:
+        login_user(user)
+        return redirect(url_for('index'))
+    else:
+        return render_template('login.html' , errore = "Username o Password Errati!")
 @app.route('/register')
 def register():  # put application's code here
     return render_template('register.html')
+
+@app.route('/verify' , methods=['GET', 'POST'])
+def verify():
+    if current_user.is_authenticated and current_user.verificato == 0:  #caso in cui l'utente ha effettuato la registrazione ma non ha attivato l'account
+        return render_template('verify.html')
+    if request.form['email'] is None:
+        return redirect(url_for('login'))
+    nome = request.form['nome']
+    cognome = request.form['cognome']
+    email = request.form['email']
+    hash_password = hashlib.md5(request.form['password'].encode()).hexdigest()
+    user = db.session.scalar(db.Select(User).where(User.email == email))
+    if user is None:
+        otp =  random.randint(10000 , 99999)
+        user = User(nome=nome , cognome=cognome , hash_password = hash_password  , email = email , username = email.split('@')[0] , verificato =False , otp = otp)
+        db.session.add(user)
+        db.session.commit()
+        if send_otp(user.email , otp , mail) == True:
+            login_user(user)
+            return render_template('verify.html')
+    if user.verificato == 0:
+        login_user(user)
+        return render_template('verify.html')
+
+    if user.verificato == 1:
+        return render_template('register.html' , error = 'Utente già registrato!')
+
+    if user.verificato is None:
+        return render_template('register.html' , error = 'Utente già registrato tramite terze parti!')
+
+
+
+
+
+    return render_template('verify.html')
+
+@app.route('/attivazione' , methods=['GET', 'POST'])
+def attivazone():
+    if current_user.is_anonymous:
+        return redirect(url_for('login'))
+    otp_user = request.form['otp']
+    print(otp_user)
+    print(current_user.otp)
+    if int(current_user.otp) == int(otp_user):
+        current_user.verificato = 1
+        db.session.commit()
+        return render_template('success.html' , nome = current_user.nome , cognome = current_user.cognome)
+    else:
+        return render_template('verify.html' , error="OTP Errato!")
+    return
+
 
 @app.route('/forgot-password')
 def forgotpassword():
@@ -179,6 +221,9 @@ def oauth2_callback(provider):
 
     return redirect(url_for('index'))
 
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('404.html'), 404
 
 if __name__ == '__main__':
     app.run()
