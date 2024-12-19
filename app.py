@@ -15,7 +15,7 @@ from flask_login import LoginManager , UserMixin , login_user , logout_user , cu
 from dotenv import load_dotenv
 from flask_mail import Mail, Message
 from config import app
-from funzioni_utili import send_otp
+from funzioni_utili import send_otp , send_reset_password
 
 load_dotenv()
 
@@ -41,6 +41,7 @@ class User(UserMixin , db.Model):
     cognome = db.Column(db.String(50) , nullable=True)
     verificato = db.Column(db.Boolean() , nullable=True)
     otp = db.Column(db.Integer() , nullable=True)
+    securetoken = db.Column(db.String(100) , nullable=True)
 
 
 
@@ -67,6 +68,42 @@ def trylogin():
         return redirect(url_for('index'))
     else:
         return render_template('login.html' , errore = "Username o Password Errati!")
+
+@app.route('/reset-password' , methods=['GET','POST'])
+def reset_password():
+
+    if request.method == 'POST':
+        if request.form['changepassword'] == '5x53': #submit del form di invio link per cambio password
+            email = request.form['email']
+            user = db.session.scalar(db.Select(User).where(User.email == email))
+            if user is None:
+                return render_template('forgot-password.html' , errore= "Attenzione! Email non registrata!")
+            reset_token = secrets.token_urlsafe(32)
+            user.securetoken = reset_token
+            db.session.commit()
+            url = 'http://127.0.0.1:5000/reset-password?req=5x54&userid=' + str(user.id)  + '&securetoken=' + reset_token
+            if send_reset_password(email  , url , mail) == True:
+                return redirect(url_for('login'))
+        if request.form['changepassword'] == '5x55': #submit del form di cambio password
+            hash_password = hashlib.md5(request.form['password'].encode()).hexdigest()
+            user = db.session.scalar(db.Select(User).where(User.id == session.get('change-user-id')))
+            user.hash_password = hash_password
+            db.session.commit()
+            return render_template('login.html' , errore = "Password modificata con successo! Effettua il Login!")
+        else:
+            return render_template('forgot-password.html' , errore = 'Attenzione! Servizio momentaneamente fuori uso!')
+    if request.method == 'GET':
+        if request.args.get('req') == '5x54' and request.method == 'GET': #parte che viene eseguita aprendo il link via mail
+            print('000')
+            id = int(request.args.get('userid'))
+            user = db.session.scalar(db.Select(User).where(User.id == id))
+
+            if user.securetoken == request.args.get('securetoken'):
+                session['change-user-id'] = user.id
+                return render_template('change-password.html' , username = user.username)
+
+
+    return render_template('login.html')
 @app.route('/register')
 def register():  # put application's code here
     return render_template('register.html')
